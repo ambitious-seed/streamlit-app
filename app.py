@@ -24,11 +24,7 @@ if len(date_range) == 2:
     st.info(f"Запрос данных с {start_date} по {end_date}...")
     
     try:
-        response = supabase.table("mmp_ad_revenue_events") \
-            .select("*") \
-            .gte("created_at", start_str) \
-            .lte("created_at", end_str) \
-            .execute()
+        response = supabase.table("mmp_ad_revenue_events").select("*").execute()
         
         data = response.data
         
