@@ -1,59 +1,118 @@
 import streamlit as st
 import pandas as pd
+import json
 from supabase import create_client
+
+# Настройки страницы Streamlit
+st.set_page_config(page_title="Custom Analytics Report", layout="wide")
+
+st.title("📊 Конструктор отчетов (User Acquisition & Attribution)")
 
 # 1. Подключение к Supabase
 SUPABASE_URL = "https://zxzcywphwkviqbbfgkpr.supabase.co"
-# Убедитесь, что тут вставлен service_role key или настроен GRANT SELECT
 SUPABASE_KEY = "sb_publishable_K-PXcgoZCnW_Vemg8Q_baQ_Wn7YAblg"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-st.title("📊 Аналитика приложения")
+# 2. Фильтры в сайдбаре или сверху
+st.sidebar.header("⚙️ Настройки отчета")
 
-# 2. Фильтр по датам
-date_range = st.date_input("Выберите период", [])
+# Выбор периода
+date_range = st.sidebar.date_input("Дата установки", [])
+
+# 3. Выбор Группировки (Разделение)
+DIMENSIONS_MAP = {
+    "Рекламная сеть": "ad_network",
+    "Кампания": "campaign_name",
+    "Креатив": "creative_name",
+    "Дата": "install_date"
+}
+
+selected_dimensions_labels = st.sidebar.multiselect(
+    "Разделение (Dimensions)",
+    options=list(DIMENSIONS_MAP.keys()),
+    default=["Рекламная сеть", "Кампания"]
+)
+selected_dimensions = [DIMENSIONS_MAP[label] for label in selected_dimensions_labels]
+
+# 4. Выбор Метрик
+AVAILABLE_METRICS = ["Installs", "Ad Revenue ($)", "IAP Revenue ($)", "Total Revenue ($)", "Avg Sessions"]
+selected_metrics = st.sidebar.multiselect(
+    "Метрики (Metrics)",
+    options=AVAILABLE_METRICS,
+    default=["Installs", "Ad Revenue ($)", "Total Revenue ($)"]
+)
 
 if len(date_range) == 2:
     start_date, end_date = date_range
-    
-    # Форматируем даты строго по стандарту ISO без Z в конце
     start_str = f"{start_date} 00:00:00"
     end_str = f"{end_date} 23:59:59"
     
-    st.info(f"Запрос данных с {start_date} по {end_date}...")
+    # Запрос установок из mmp
+    mmp_res = supabase.table("mmp").select("*").gte("created_at", start_str).lte("end_at", end_str if 'end_at' in locals() else end_str).execute()
     
-    try:
-        response = supabase.table("mmp_ad_revenue_events") \
-            .select("*") \
-            .gte("created_at", start_str) \
-            .lte("created_at", end_str) \
-            .execute()
+    # Запрос доходов из ad_revenue
+    ad_res = supabase.table("mmp_ad_revenue_events").select("*").execute()
+    
+    if mmp_res.data:
+        df_mmp = pd.DataFrame(mmp_res.data)
+        df_ad = pd.DataFrame(ad_res.data) if ad_res.data else pd.DataFrame()
         
-        data = response.data
+        # Подготовка вспомогательных полей
+        df_mmp['install_date'] = pd.to_datetime(df_mmp['created_at']).dt.date
+        df_mmp['ad_network'] = df_mmp['ad_network'].fillna('Organic')
+        df_mmp['campaign_name'] = df_mmp['campaign_name'].fillna('None')
         
-        if data:
-            df = pd.DataFrame(data)
-            
-            # Отрисовываем общее количество записей и доход
-            st.success(f"Найдено записей: {len(df)}")
-            
-            if 'revenue' in df.columns:
-                total_rev = df['revenue'].sum()
-                st.metric("Общий доход от рекламы", f"${total_rev:.4f}")
-            
-            # Таблица с данными
-            st.subheader("Сырые данные")
-            st.dataframe(df)
-            
-            # График по дням (если есть колонка revenue)
-            if 'revenue' in df.columns and 'created_at' in df.columns:
-                df['created_at'] = pd.to_datetime(df['created_at'])
-                daily_rev = df.groupby(df['created_at'].dt.date)['revenue'].sum()
-                st.subheader("График дохода по дням")
-                st.line_chart(daily_rev)
+        # Подтянем Ad Revenue по каждому iid из таблицы ad_revenue_events
+        if not df_ad.empty:
+            ad_by_iid = df_ad.groupby('iid')['revenue'].sum().reset_index()
+            ad_by_iid.rename(columns={'revenue': 'Ad Revenue ($)'}, inplace=True)
+            df_mmp = df_mmp.merge(ad_by_iid, on='iid', how='left')
+            df_mmp['Ad Revenue ($)'] = df_mmp['Ad Revenue ($)'].fillna(0)
         else:
-            st.warning("В базе нет данных за выбранный период времени.")
+            df_mmp['Ad Revenue ($)'] = 0.0
             
-    except Exception as e:
-        st.error(f"Ошибка при запросе к Supabase: {e}")
+        # Парсим IAP Revenue
+        def parse_iap(val):
+            if isinstance(val, dict):
+                return sum(val.values())
+            try:
+                d = json.loads(val)
+                return sum(d.values())
+            except:
+                return 0.0
+
+        df_mmp['IAP Revenue ($)'] = df_mmp['iap_revenue_by_currency'].apply(parse_iap)
+        df_mmp['Total Revenue ($)'] = df_mmp['Ad Revenue ($)'] + df_mmp['IAP Revenue ($)']
+        df_mmp['Installs'] = 1
+        df_mmp['Avg Sessions'] = df_mmp['session_count']
+        
+        # 5. Динамическая группировка (Pivot / GroupBy)
+        if selected_dimensions:
+            agg_rules = {
+                'Installs': 'sum',
+                'Ad Revenue ($)': 'sum',
+                'IAP Revenue ($)': 'sum',
+                'Total Revenue ($)': 'sum',
+                'Avg Sessions': 'mean'
+            }
+            
+            # Оставляем только выбранные агрегаты
+            active_agg = {k: agg_rules[k] for k in selected_metrics if k in agg_rules}
+            
+            grouped_df = df_mmp.groupby(selected_dimensions).agg(active_agg).reset_index()
+            
+            # Округление финансовых показателей
+            for col in ['Ad Revenue ($)', 'IAP Revenue ($)', 'Total Revenue ($)']:
+                if col in grouped_df.columns:
+                    grouped_df[col] = grouped_df[col].round(4)
+            if 'Avg Sessions' in grouped_df.columns:
+                grouped_df['Avg Sessions'] = grouped_df['Avg Sessions'].round(1)
+
+            # Вывод строки "Totals" внизу (как в кабинете)
+            st.subheader("Результаты анализа")
+            st.dataframe(grouped_df, use_container_width=True)
+        else:
+            st.warning("Выберите хотя бы один параметр для группировки в панели слева.")
+    else:
+        st.info("За выбранный период установок не найдено.")
