@@ -82,16 +82,17 @@ if len(date_range) == 2:
             else:
                 df_mmp['creative_name'] = 'None'
             
-            # --- Расчет Retention Rate ---
-            install_dt = pd.to_datetime(df_mmp['created_at'])
-            last_sess_dt = pd.to_datetime(df_mmp['last_session_date'])
+            # --- Расчет Retention Rate по календарным дням ---
+            install_date = pd.to_datetime(df_mmp['created_at']).dt.date
+            last_sess_date = pd.to_datetime(df_mmp['last_session_date']).dt.date
+
+            # Считаем разницу именно в календарных днях
+            days_diff = (last_sess_date - install_date).dt.days
             
-            # Вычисляем разницу в днях между установкой и последней сессией
-            days_diff = (last_sess_dt - install_dt).dt.total_seconds() / 86400.0
-            
-            df_mmp['RR D1 (%)'] = (days_diff >= 1.0).astype(int) * 100
-            df_mmp['RR D3 (%)'] = (days_diff >= 3.0).astype(int) * 100
-            df_mmp['RR D7 (%)'] = (days_diff >= 7.0).astype(int) * 100
+            # Юзер считается удержанным, если заходил В этот день или ПОЗЖЕ
+            df_mmp['RR D1 (%)'] = (days_diff >= 1).astype(int) * 100
+            df_mmp['RR D3 (%)'] = (days_diff >= 3).astype(int) * 100
+            df_mmp['RR D7 (%)'] = (days_diff >= 7).astype(int) * 100
             
             # Подтягиваем Ad Revenue по каждому iid из событий
             if not df_ad.empty:
