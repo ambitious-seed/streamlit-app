@@ -4,13 +4,13 @@ import json
 from supabase import create_client
 
 # Настройки страницы Streamlit
-st.set_page_config(page_title="Custom Analytics Report", layout="wide")
+st.set_page_config(page_title="Tiny Friends Analytics", layout="wide")
 
 st.title("📊 Tiny Friends (User Acquisition & Attribution)")
 
 # 1. Подключение к Supabase
 SUPABASE_URL = "https://zxzcywphwkviqbbfgkpr.supabase.co"
-SUPABASE_KEY = "sb_publishable_K-PXcgoZCnW_Vemg8Q_baQ_Wn7YAblg" 
+SUPABASE_KEY = "sb_publishable_K-PXcgoZCnW_Vemg8Q_baQ_Wn7YAblg"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -35,12 +35,22 @@ selected_dimensions_labels = st.sidebar.multiselect(
 )
 selected_dimensions = [DIMENSIONS_MAP[label] for label in selected_dimensions_labels]
 
-# 4. Выбор Метрик
-AVAILABLE_METRICS = ["Installs", "Ad Revenue ($)", "IAP Revenue ($)", "Total Revenue ($)", "Avg Sessions"]
+# 4. Расширенный выбор Метрик (добавлены RR D1, RR D3, RR D7)
+AVAILABLE_METRICS = [
+    "Installs", 
+    "RR D1 (%)", 
+    "RR D3 (%)", 
+    "RR D7 (%)", 
+    "Ad Revenue ($)", 
+    "IAP Revenue ($)", 
+    "Total Revenue ($)", 
+    "Avg Sessions"
+]
+
 selected_metrics = st.sidebar.multiselect(
     "Метрики (Metrics)",
     options=AVAILABLE_METRICS,
-    default=["Installs", "Ad Revenue ($)", "Total Revenue ($)"]
+    default=["Installs", "RR D1 (%)", "RR D3 (%)", "Ad Revenue ($)", "Total Revenue ($)"]
 )
 
 if len(date_range) == 2:
@@ -67,7 +77,21 @@ if len(date_range) == 2:
             df_mmp['install_date'] = pd.to_datetime(df_mmp['created_at']).dt.date
             df_mmp['ad_network'] = df_mmp['ad_network'].fillna('Organic')
             df_mmp['campaign_name'] = df_mmp['campaign_name'].fillna('None')
-            df_mmp['creative_name'] = df_mmp['creative_name'].fillna('None')
+            if 'creative_name' in df_mmp.columns:
+                df_mmp['creative_name'] = df_mmp['creative_name'].fillna('None')
+            else:
+                df_mmp['creative_name'] = 'None'
+            
+            # --- Расчет Retention Rate ---
+            install_dt = pd.to_datetime(df_mmp['created_at'])
+            last_sess_dt = pd.to_datetime(df_mmp['last_session_date'])
+            
+            # Вычисляем разницу в днях между установкой и последней сессией
+            days_diff = (last_sess_dt - install_dt).dt.total_seconds() / 86400.0
+            
+            df_mmp['RR D1 (%)'] = (days_diff >= 1.0).astype(int) * 100
+            df_mmp['RR D3 (%)'] = (days_diff >= 3.0).astype(int) * 100
+            df_mmp['RR D7 (%)'] = (days_diff >= 7.0).astype(int) * 100
             
             # Подтягиваем Ad Revenue по каждому iid из событий
             if not df_ad.empty:
@@ -97,6 +121,9 @@ if len(date_range) == 2:
             if selected_dimensions:
                 agg_rules = {
                     'Installs': 'sum',
+                    'RR D1 (%)': 'mean',
+                    'RR D3 (%)': 'mean',
+                    'RR D7 (%)': 'mean',
                     'Ad Revenue ($)': 'sum',
                     'IAP Revenue ($)': 'sum',
                     'Total Revenue ($)': 'sum',
@@ -107,10 +134,15 @@ if len(date_range) == 2:
                 
                 grouped_df = df_mmp.groupby(selected_dimensions).agg(active_agg).reset_index()
                 
-                # Округление финансовых показателей
+                # Форматирование и округление
                 for col in ['Ad Revenue ($)', 'IAP Revenue ($)', 'Total Revenue ($)']:
                     if col in grouped_df.columns:
                         grouped_df[col] = grouped_df[col].round(4)
+                
+                for col in ['RR D1 (%)', 'RR D3 (%)', 'RR D7 (%)']:
+                    if col in grouped_df.columns:
+                        grouped_df[col] = grouped_df[col].round(1).astype(str) + " %"
+                        
                 if 'Avg Sessions' in grouped_df.columns:
                     grouped_df['Avg Sessions'] = grouped_df['Avg Sessions'].round(1)
 
