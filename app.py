@@ -82,14 +82,23 @@ if len(date_range) == 2:
             else:
                 df_mmp['creative_name'] = 'None'
             
-            # --- Расчет Retention Rate по календарным дням ---
-            install_date = pd.to_datetime(df_mmp['created_at']).dt.date
-            last_sess_date = pd.to_datetime(df_mmp['last_session_date']).dt.date
-
-            # Считаем разницу именно в календарных днях
-            days_diff = (last_sess_date - install_date).dt.days
+            # --- Безопасный расчет Retention Rate по календарным дням ---
             
-            # Юзер считается удержанным, если заходил В этот день или ПОЗЖЕ
+            # 1. Принудительно преобразуем в datetime (с параметром errors='coerce' для обработки None/NaN)
+            install_dt = pd.to_datetime(df_mmp['created_at'], errors='coerce')
+            last_sess_dt = pd.to_datetime(df_mmp['last_session_date'], errors='coerce')
+            
+            # Если last_session_date пустой (юзер еще не заходил повторно), заменяем его на дату установки
+            last_sess_dt = last_sess_dt.fillna(install_dt)
+            
+            # 2. Переводим в календарные даты (.dt.date)
+            install_date = install_dt.dt.date
+            last_sess_date = last_sess_dt.dt.date
+            
+            # 3. Считаем разницу в днях
+            days_diff = (last_sess_date - install_date).apply(lambda x: x.days if pd.notnull(x) else 0)
+            
+            # 4. Вычисляем флаги Retention (100% или 0%)
             df_mmp['RR D1 (%)'] = (days_diff >= 1).astype(int) * 100
             df_mmp['RR D3 (%)'] = (days_diff >= 3).astype(int) * 100
             df_mmp['RR D7 (%)'] = (days_diff >= 7).astype(int) * 100
