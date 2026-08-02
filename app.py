@@ -49,8 +49,8 @@ if len(date_range) == 2:
     end_str = f"{end_date} 23:59:59"
     
     try:
-        # Запрос установок из таблицы mmp_rows
-        mmp_res = supabase.table("mmp_rows") \
+        # Запрос установок из таблицы mmp
+        mmp_res = supabase.table("mmp") \
             .select("*") \
             .gte("created_at", start_str) \
             .lte("created_at", end_str) \
