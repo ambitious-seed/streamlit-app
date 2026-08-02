@@ -6,7 +6,7 @@ from supabase import create_client
 # Настройки страницы Streamlit
 st.set_page_config(page_title="Custom Analytics Report", layout="wide")
 
-st.title("📊 Конструктор отчетов (User Acquisition & Attribution)")
+st.title("📊 Tiny Friends (User Acquisition & Attribution)")
 
 # 1. Подключение к Supabase
 SUPABASE_URL = "https://zxzcywphwkviqbbfgkpr.supabase.co"
