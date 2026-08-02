@@ -17,14 +17,13 @@ date_range = st.date_input("Выберите период", [])
 if len(date_range) == 2:
     start_date, end_date = date_range
     
-    # Преобразуем даты в формат ISO (с началом и концом суток)
-    start_str = f"{start_date}T00:00:00.000Z"
-    end_str = f"{end_date}T23:59:59.999Z"
+    # Форматируем даты строго по стандарту ISO без Z в конце
+    start_str = f"{start_date} 00:00:00"
+    end_str = f"{end_date} 23:59:59"
     
     st.info(f"Запрос данных с {start_date} по {end_date}...")
     
     try:
-        # Запрос к базе Supabase
         response = supabase.table("mmp_ad_revenue_events") \
             .select("*") \
             .gte("created_at", start_str) \
