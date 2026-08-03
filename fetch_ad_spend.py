@@ -80,16 +80,20 @@ def fetch_facebook_ads_spend(date_str):
         print("⚠️ Пропущены некоторые секреты Meta Ads — сбор FB отменен.")
         return records
 
+    if not ad_account_id.startswith("act_"):
+        ad_account_id = f"act_{ad_account_id}"
+
     try:
         FacebookAdsApi.init(app_id, app_secret, access_token)
         account = AdAccount(ad_account_id)
         
+        # Спускаемся на уровень Групп объявлений (adset)
         params = {
             'time_range': {'since': date_str, 'until': date_str},
-            'level': 'campaign',
+            'level': 'adset',
         }
         fields = [
-            AdsInsights.Field.campaign_name,
+            AdsInsights.Field.adset_name,
             AdsInsights.Field.spend,
         ]
         
@@ -101,9 +105,12 @@ def fetch_facebook_ads_spend(date_str):
                 records.append({
                     "date": date_str,
                     "ad_network": "facebook",
-                    "campaign_name": item.get('campaign_name', 'Unknown'),
+                    # Теперь сохраняем название Группы объявлений (July_5k_USA...)
+                    "campaign_name": item.get('adset_name', 'Unknown Adset'),
                     "spend": spend_val
                 })
+                
+        print(f"✅ Meta Ads: Найдено {len(records)} групп объявлений с расходами.")
                 
     except Exception as e:
         print(f"⚠️ Ошибка при запросе к Meta Ads API: {e}")
