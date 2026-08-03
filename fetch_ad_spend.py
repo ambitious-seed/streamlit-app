@@ -18,6 +18,7 @@ google_config = {
     "client_secret": os.getenv("GOOGLE_ADS_CLIENT_SECRET"),
     "refresh_token": os.getenv("GOOGLE_ADS_REFRESH_TOKEN"),
     "login_customer_id": os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID"),
+    "token_uri": "https://oauth2.googleapis.com/token",
     "use_proto_plus": True
 }
 
