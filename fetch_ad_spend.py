@@ -3,24 +3,23 @@ from datetime import datetime, timedelta
 from google.ads.googleads.client import GoogleAdsClient
 from supabase import create_client
 
-# 1. Проверка Secrets перед запуском
-required_secrets = {
-    "GOOGLE_ADS_DEVELOPER_TOKEN": os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN"),
-    "GOOGLE_ADS_CLIENT_ID": os.getenv("GOOGLE_ADS_CLIENT_ID"),
-    "GOOGLE_ADS_CLIENT_SECRET": os.getenv("GOOGLE_ADS_CLIENT_SECRET"),
-    "GOOGLE_ADS_REFRESH_TOKEN": os.getenv("GOOGLE_ADS_REFRESH_TOKEN"),
-    "GOOGLE_ADS_LOGIN_CUSTOMER_ID": os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID"),
-}
+# Диагностика: проверяем, что именно видит скрипт из GitHub Secrets
+print("--- ДИАГНОСТИКА SECRETS ---")
+print("GOOGLE_ADS_DEVELOPER_TOKEN:", "ЗАДАН" if os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN") else "ПУСТО / ОТСУТСТВУЕТ")
+print("GOOGLE_ADS_CLIENT_ID:", "ЗАДАН" if os.getenv("GOOGLE_ADS_CLIENT_ID") else "ПУСТО / ОТСУТСТВУЕТ")
+print("GOOGLE_ADS_CLIENT_SECRET:", "ЗАДАН" if os.getenv("GOOGLE_ADS_CLIENT_SECRET") else "ПУСТО / ОТСУТСТВУЕТ")
+print("GOOGLE_ADS_REFRESH_TOKEN:", "ЗАДАН" if os.getenv("GOOGLE_ADS_REFRESH_TOKEN") else "ПУСТО / ОТСУТСТВУЕТ")
+print("GOOGLE_ADS_LOGIN_CUSTOMER_ID:", "ЗАДАН" if os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID") else "ПУСТО / ОТСУТСТВУЕТ")
+print("---------------------------")
 
-missing_secrets = [key for key, val in required_secrets.items() if not val]
+# 1. Инициализация Supabase
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-if missing_secrets:
-    print(f"❌ ОШИБКА: В GitHub Secrets не найдены (или пустые): {missing_secrets}")
-    exit(1)
-else:
-    print("✅ Все секреты успешно прочитаны!")
+yesterday_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-# 2. Конфигурация Google Ads API
+# 2. Конфигурация Google Ads API из GitHub Secrets
 google_config = {
     "developer_token": os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN"),
     "client_id": os.getenv("GOOGLE_ADS_CLIENT_ID"),
@@ -30,13 +29,6 @@ google_config = {
     "token_uri": "https://oauth2.googleapis.com/token",
     "use_proto_plus": True
 }
-
-# 3. Инициализация Supabase
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-yesterday_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
 def fetch_google_ads_spend(date_str):
     records = []
@@ -66,7 +58,7 @@ def fetch_google_ads_spend(date_str):
             })
             
     except Exception as e:
-        print(f"❌ Ошибка при запросе к Google Ads API: {e}")
+        print(f"Ошибка при запросе к Google Ads API: {e}")
         
     return records
 
@@ -75,13 +67,13 @@ def main():
     spend_data = fetch_google_ads_spend(yesterday_str)
     
     if spend_data:
-        res = supabase.table("ad_spend").upsert(
+        supabase.table("ad_spend").upsert(
             spend_data, 
             on_conflict="date,ad_network,campaign_name"
         ).execute()
-        print(f"🎉 Успешно записано {len(spend_data)} записей в Supabase!")
+        print(f"Успешно записано {len(spend_data)} записей в Supabase!")
     else:
-        print("За вчерашний день расходов с > $0 не найдено.")
+        print("За вчерашний день расходов не найдено или возникла ошибка.")
 
 if __name__ == "__main__":
     main()
