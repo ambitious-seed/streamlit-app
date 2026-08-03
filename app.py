@@ -165,3 +165,32 @@ if len(date_range) == 2:
             
     except Exception as e:
         st.error(f"Ошибка выполнения запроса: {e}")
+
+# Запрос расходов из таблицы ad_spend за период
+spend_res = supabase.table("ad_spend") \
+    .select("campaign_name, ad_network, spend") \
+    .gte("date", start_date) \
+    .lte("date", end_date) \
+    .execute()
+
+df_spend = pd.DataFrame(spend_res.data) if spend_res.data else pd.DataFrame()
+
+# При группировке объединяем установки и доходы с расходами:
+if not df_spend.empty:
+    spend_by_campaign = df_spend.groupby(['ad_network', 'campaign_name'])['spend'].sum().reset_index()
+    spend_by_campaign.rename(columns={'spend': 'Spend ($)'}, inplace=True)
+    
+    # Склеиваем с основной таблицей установок
+    grouped_df = grouped_df.merge(spend_by_campaign, on=['ad_network', 'campaign_name'], how='left')
+    grouped_df['Spend ($)'] = grouped_df['Spend ($)'].fillna(0.0)
+else:
+    grouped_df['Spend ($)'] = 0.0
+
+# --- Расчет CPI и ROAS ---
+grouped_df['CPI ($)'] = (grouped_df['Spend ($)'] / grouped_df['Installs']).round(2)
+
+# ROAS = (Total Revenue / Spend) * 100%
+grouped_df['ROAS (%)'] = grouped_df.apply(
+    lambda r: f"{(r['Total Revenue ($)'] / r['Spend ($)'] * 100):.1f} %" if r['Spend ($)'] > 0 else "0.0 %", 
+    axis=1
+)
