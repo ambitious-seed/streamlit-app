@@ -1,0 +1,37 @@
+name: Sync Ad Spend Daily
+
+# Настройка расписания
+on:
+  schedule:
+    # Запуск каждый день в 03:00 UTC (06:00 по Москве/Сербии)
+    - cron: '0 3 * * *'
+  # Кнопка для ручного запуска из интерфейса GitHub (удобно для тестов)
+  workflow_dispatch: 
+
+jobs:
+  sync-spend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Чтение репозитория
+        uses: actions/checkout@v4
+
+      - name: Настройка Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Установка зависимостей
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests supabase pandas google-ads
+
+      - name: Запуск скрипта импорта расходов
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Сюда же добавляются токены рекламных сеток:
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}
+          UNITY_API_KEY: ${{ secrets.UNITY_API_KEY }}
+        run: |
+          python fetch_ad_spend.py
