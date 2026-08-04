@@ -118,21 +118,26 @@ def fetch_facebook_ads_spend(date_str):
     return records
 
 def main():
-    print(f"Сбор расходов за {yesterday_str}...")
+    # Собираем данные за последние 3 дня (вчера, позавчера и 3 дня назад)
+    today = datetime.now()
     
-    google_data = fetch_google_ads_spend(yesterday_str)
-    meta_data = fetch_facebook_ads_spend(yesterday_str)
-    
-    all_spend_data = google_data + meta_data
-    
-    if all_spend_data:
-        supabase.table("ad_spend").upsert(
-            all_spend_data, 
-            on_conflict="date,ad_network,campaign_name"
-        ).execute()
-        print(f"🎉 Успешно записано {len(all_spend_data)} записей в Supabase! (Google: {len(google_data)}, Meta: {len(meta_data)})")
-    else:
-        print("За вчерашний день расходов не найдено или возникли ошибки.")
+    for i in range(1, 4):
+        target_date = (today - timedelta(days=i)).strftime("%Y-%m-%d")
+        print(f"--- Сбор расходов за {target_date} ---")
+        
+        google_data = fetch_google_ads_spend(target_date)
+        meta_data = fetch_facebook_ads_spend(target_date)
+        
+        all_spend_data = google_data + meta_data
+        
+        if all_spend_data:
+            supabase.table("ad_spend").upsert(
+                all_spend_data, 
+                on_conflict="date,ad_network,campaign_name"
+            ).execute()
+            print(f"🎉 Записано {len(all_spend_data)} записей за {target_date}!")
+        else:
+            print(f"За {target_date} расходов не найдено.")
 
 if __name__ == "__main__":
     main()
