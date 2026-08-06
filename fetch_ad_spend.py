@@ -11,17 +11,22 @@ from supabase import create_client
 
 # --- ДИАГНОСТИКА SECRETS ---
 print("--- ДИАГНОСТИКА SECRETS ---")
-print("GOOGLE_ADS_DEVELOPER_TOKEN:", "ЗАДАН" if os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN") else "ПУСТО / ОТСУТСТВУЕТ")
-print("GOOGLE_ADS_CLIENT_ID:", "ЗАДАН" if os.getenv("GOOGLE_ADS_CLIENT_ID") else "ПУСТО / ОТСУТСТВУЕТ")
-print("GOOGLE_ADS_CLIENT_SECRET:", "ЗАДАН" if os.getenv("GOOGLE_ADS_CLIENT_SECRET") else "ПУСТО / ОТСУТСТВУЕТ")
-print("GOOGLE_ADS_REFRESH_TOKEN:", "ЗАДАН" if os.getenv("GOOGLE_ADS_REFRESH_TOKEN") else "ПУСТО / ОТСУТСТВУЕТ")
-print("GOOGLE_ADS_LOGIN_CUSTOMER_ID:", "ЗАДАН" if os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID") else "ПУСТО / ОТСУТСТВУЕТ")
-print("META_APP_ID:", "ЗАДАН" if os.getenv("META_APP_ID") else "ПУСТО / ОТСУТСТВУЕТ")
-print("META_APP_SECRET:", "ЗАДАН" if os.getenv("META_APP_SECRET") else "ПУСТО / ОТСУТСТВУЕТ")
-print("META_ACCESS_TOKEN:", "ЗАДАН" if os.getenv("META_ACCESS_TOKEN") else "ПУСТО / ОТСУТСТВУЕТ")
-print("META_AD_ACCOUNT_ID:", "ЗАДАН" if os.getenv("META_AD_ACCOUNT_ID") else "ПУСТО / ОТСУТСТВУЕТ")
-print("UNITY_ORGANIZATION_ID:", "ЗАДАН" if os.getenv("UNITY_ORGANIZATION_ID") else "ПУСТО / ОТСУТСТВУЕТ")
-print("UNITY_API_KEY:", "ЗАДАН" if os.getenv("UNITY_API_KEY") else "ПУСТО / ОТСУТСТВУЕТ")
+def check_secret(name):
+    val = os.getenv(name)
+    if val is None:
+        return "ОТСУТСТВУЕТ (None)"
+    elif len(val.strip()) == 0:
+        return "ПУСТАЯ СТРОКА"
+    else:
+        return f"ЗАДАН (длина: {len(val.strip())})"
+
+for secret_name in [
+    "GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET",
+    "GOOGLE_ADS_REFRESH_TOKEN", "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "META_APP_ID",
+    "META_APP_SECRET", "META_ACCESS_TOKEN", "META_AD_ACCOUNT_ID",
+    "UNITY_ORGANIZATION_ID", "UNITY_API_KEY"
+]:
+    print(f"{secret_name}: {check_secret(secret_name)}")
 print("---------------------------")
 
 # 1. Инициализация Supabase
