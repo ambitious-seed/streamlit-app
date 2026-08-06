@@ -35,9 +35,12 @@ selected_dimensions_labels = st.sidebar.multiselect(
 )
 selected_dimensions = [DIMENSIONS_MAP[label] for label in selected_dimensions_labels]
 
-# 4. Расширенный выбор Метрик (добавлены RR D1, RR D3, RR D7)
+# 4. Выбор Метрик
 AVAILABLE_METRICS = [
     "Installs", 
+    "Spend ($)",
+    "CPI ($)",
+    "ROAS (%)",
     "RR D1 (%)", 
     "RR D3 (%)", 
     "RR D7 (%)", 
@@ -50,7 +53,7 @@ AVAILABLE_METRICS = [
 selected_metrics = st.sidebar.multiselect(
     "Метрики (Metrics)",
     options=AVAILABLE_METRICS,
-    default=["Installs", "RR D1 (%)", "RR D3 (%)", "Ad Revenue ($)", "Total Revenue ($)"]
+    default=["Installs", "Spend ($)", "CPI ($)", "RR D1 (%)", "Total Revenue ($)", "ROAS (%)"]
 )
 
 if len(date_range) == 2:
@@ -59,76 +62,72 @@ if len(date_range) == 2:
     end_str = f"{end_date} 23:59:59"
     
     try:
-        # Запрос установок из таблицы mmp
+        # --- 1. Запросы к БД ---
         mmp_res = supabase.table("mmp") \
             .select("*") \
             .gte("created_at", start_str) \
             .lte("created_at", end_str) \
             .execute()
-        
-        # Запрос доходов из таблицы mmp_ad_revenue_events
+            
         ad_res = supabase.table("mmp_ad_revenue_events").select("*").execute()
         
-        if mmp_res.data:
-            df_mmp = pd.DataFrame(mmp_res.data)
-            df_ad = pd.DataFrame(ad_res.data) if ad_res.data else pd.DataFrame()
-            
-            # Подготовка вспомогательных полей
-            df_mmp['install_date'] = pd.to_datetime(df_mmp['created_at']).dt.date
-            df_mmp['ad_network'] = df_mmp['ad_network'].fillna('Organic')
-            df_mmp['campaign_name'] = df_mmp['campaign_name'].fillna('None')
-            if 'creative_name' in df_mmp.columns:
-                df_mmp['creative_name'] = df_mmp['creative_name'].fillna('None')
-            else:
-                df_mmp['creative_name'] = 'None'
-            
-            # --- Безопасный расчет Retention Rate по календарным дням ---
-            
-            # 1. Принудительно преобразуем в datetime (с параметром errors='coerce' для обработки None/NaN)
-            install_dt = pd.to_datetime(df_mmp['created_at'], errors='coerce')
-            last_sess_dt = pd.to_datetime(df_mmp['last_session_date'], errors='coerce')
-            
-            # Если last_session_date пустой (юзер еще не заходил повторно), заменяем его на дату установки
-            last_sess_dt = last_sess_dt.fillna(install_dt)
-            
-            # 2. Переводим в календарные даты (.dt.date)
-            install_date = install_dt.dt.date
-            last_sess_date = last_sess_dt.dt.date
-            
-            # 3. Считаем разницу в днях
-            days_diff = (last_sess_date - install_date).apply(lambda x: x.days if pd.notnull(x) else 0)
-            
-            # 4. Вычисляем флаги Retention (100% или 0%)
-            df_mmp['RR D1 (%)'] = (days_diff >= 1).astype(int) * 100
-            df_mmp['RR D3 (%)'] = (days_diff >= 3).astype(int) * 100
-            df_mmp['RR D7 (%)'] = (days_diff >= 7).astype(int) * 100
-            
-            # Подтягиваем Ad Revenue по каждому iid из событий
-            if not df_ad.empty:
-                ad_by_iid = df_ad.groupby('iid')['revenue'].sum().reset_index()
-                ad_by_iid.rename(columns={'revenue': 'Ad Revenue ($)'}, inplace=True)
-                df_mmp = df_mmp.merge(ad_by_iid, on='iid', how='left')
-                df_mmp['Ad Revenue ($)'] = df_mmp['Ad Revenue ($)'].fillna(0)
-            else:
-                df_mmp['Ad Revenue ($)'] = 0.0
-                
-            # Парсим IAP Revenue
-            def parse_iap(val):
-                if isinstance(val, dict):
-                    return float(sum(val.values())) if val else 0.0
-                try:
-                    d = json.loads(val)
-                    return float(sum(d.values())) if d else 0.0
-                except:
-                    return 0.0
+        spend_res = supabase.table("ad_spend") \
+            .select("campaign_name, ad_network, spend") \
+            .gte("date", str(start_date)) \
+            .lte("date", str(end_date)) \
+            .execute()
 
-            df_mmp['IAP Revenue ($)'] = df_mmp['iap_revenue_by_currency'].apply(parse_iap)
-            df_mmp['Total Revenue ($)'] = df_mmp['Ad Revenue ($)'] + df_mmp['IAP Revenue ($)']
-            df_mmp['Installs'] = 1
-            df_mmp['Avg Sessions'] = df_mmp['session_count']
-            
-            # 5. Динамическая группировка
-            if selected_dimensions:
+        df_mmp = pd.DataFrame(mmp_res.data) if mmp_res.data else pd.DataFrame()
+        df_ad = pd.DataFrame(ad_res.data) if ad_res.data else pd.DataFrame()
+        df_spend = pd.DataFrame(spend_res.data) if spend_res.data else pd.DataFrame()
+
+        if df_mmp.empty and df_spend.empty:
+            st.info("За выбранный период нет данных ни по установкам, ни по расходам.")
+        else:
+            # --- 2. Обработка данных MMP (Установки и Доходы) ---
+            if not df_mmp.empty:
+                df_mmp['install_date'] = pd.to_datetime(df_mmp['created_at']).dt.date
+                df_mmp['ad_network'] = df_mmp['ad_network'].fillna('Organic')
+                df_mmp['campaign_name'] = df_mmp['campaign_name'].fillna('None')
+                
+                if 'creative_name' in df_mmp.columns:
+                    df_mmp['creative_name'] = df_mmp['creative_name'].fillna('None')
+                else:
+                    df_mmp['creative_name'] = 'None'
+                
+                # Retention Rate
+                install_dt = pd.to_datetime(df_mmp['created_at'], errors='coerce')
+                last_sess_dt = pd.to_datetime(df_mmp['last_session_date'], errors='coerce').fillna(install_dt)
+                days_diff = (last_sess_dt.dt.date - install_dt.dt.date).apply(lambda x: x.days if pd.notnull(x) else 0)
+                
+                df_mmp['RR D1 (%)'] = (days_diff >= 1).astype(int) * 100
+                df_mmp['RR D3 (%)'] = (days_diff >= 3).astype(int) * 100
+                df_mmp['RR D7 (%)'] = (days_diff >= 7).astype(int) * 100
+                
+                # Ad Revenue из событий
+                if not df_ad.empty:
+                    ad_by_iid = df_ad.groupby('iid')['revenue'].sum().reset_index().rename(columns={'revenue': 'Ad Revenue ($)'})
+                    df_mmp = df_mmp.merge(ad_by_iid, on='iid', how='left')
+                    df_mmp['Ad Revenue ($)'] = df_mmp['Ad Revenue ($)'].fillna(0.0)
+                else:
+                    df_mmp['Ad Revenue ($)'] = 0.0
+
+                # IAP Revenue
+                def parse_iap(val):
+                    if isinstance(val, dict):
+                        return float(sum(val.values())) if val else 0.0
+                    try:
+                        d = json.loads(val)
+                        return float(sum(d.values())) if d else 0.0
+                    except:
+                        return 0.0
+
+                df_mmp['IAP Revenue ($)'] = df_mmp['iap_revenue_by_currency'].apply(parse_iap)
+                df_mmp['Total Revenue ($)'] = df_mmp['Ad Revenue ($)'] + df_mmp['IAP Revenue ($)']
+                df_mmp['Installs'] = 1
+                df_mmp['Avg Sessions'] = df_mmp['session_count']
+
+                # Группировка MMP
                 agg_rules = {
                     'Installs': 'sum',
                     'RR D1 (%)': 'mean',
@@ -139,58 +138,73 @@ if len(date_range) == 2:
                     'Total Revenue ($)': 'sum',
                     'Avg Sessions': 'mean'
                 }
-                
-                active_agg = {k: agg_rules[k] for k in selected_metrics if k in agg_rules}
-                
-                grouped_df = df_mmp.groupby(selected_dimensions).agg(active_agg).reset_index()
-                
-                # Форматирование и округление
-                for col in ['Ad Revenue ($)', 'IAP Revenue ($)', 'Total Revenue ($)']:
-                    if col in grouped_df.columns:
-                        grouped_df[col] = grouped_df[col].round(4)
-                
-                for col in ['RR D1 (%)', 'RR D3 (%)', 'RR D7 (%)']:
-                    if col in grouped_df.columns:
-                        grouped_df[col] = grouped_df[col].round(1).astype(str) + " %"
-                        
-                if 'Avg Sessions' in grouped_df.columns:
-                    grouped_df['Avg Sessions'] = grouped_df['Avg Sessions'].round(1)
-
-                st.subheader("Результаты анализа")
-                st.dataframe(grouped_df, use_container_width=True)
+                grouped_mmp = df_mmp.groupby(selected_dimensions, as_index=False).agg(agg_rules)
             else:
-                st.warning("Выберите хотя бы один параметр для группировки в панели слева.")
-        else:
-            st.info("За выбранный период установок не найдено.")
+                grouped_mmp = pd.DataFrame(columns=selected_dimensions + ['Installs', 'RR D1 (%)', 'RR D3 (%)', 'RR D7 (%)', 'Ad Revenue ($)', 'IAP Revenue ($)', 'Total Revenue ($)', 'Avg Sessions'])
+
+            # --- 3. Обработка Расходов (Ad Spend) ---
+            spend_dims = [d for d in selected_dimensions if d in ['ad_network', 'campaign_name']]
             
+            if not df_spend.empty and spend_dims:
+                spend_grouped = df_spend.groupby(spend_dims, as_index=False)['spend'].sum().rename(columns={'spend': 'Spend ($)'})
+            else:
+                spend_grouped = pd.DataFrame(columns=spend_dims + ['Spend ($)'])
+
+            # --- 4. Объединение MMP и Расходов ---
+            if spend_grouped.empty or not spend_dims:
+                grouped_df = grouped_mmp
+                grouped_df['Spend ($)'] = 0.0
+            elif grouped_mmp.empty:
+                grouped_df = spend_grouped
+                for col in ['Installs', 'Ad Revenue ($)', 'IAP Revenue ($)', 'Total Revenue ($)', 'RR D1 (%)', 'RR D3 (%)', 'RR D7 (%)', 'Avg Sessions']:
+                    grouped_df[col] = 0.0
+            else:
+                grouped_df = pd.merge(grouped_mmp, spend_grouped, on=spend_dims, how='outer')
+                grouped_df['Spend ($)'] = grouped_df['Spend ($)'].fillna(0.0)
+
+            # Заполнение NaN для столбцов категорий и метрик
+            for dim in selected_dimensions:
+                if dim in grouped_df.columns:
+                    grouped_df[dim] = grouped_df[dim].fillna('None')
+
+            numeric_cols = ['Installs', 'Ad Revenue ($)', 'IAP Revenue ($)', 'Total Revenue ($)', 'RR D1 (%)', 'RR D3 (%)', 'RR D7 (%)', 'Avg Sessions']
+            for col in numeric_cols:
+                if col in grouped_df.columns:
+                    grouped_df[col] = grouped_df[col].fillna(0.0)
+
+            # --- 5. Вычисление CPI и ROAS (до форматирования в строки) ---
+            grouped_df['CPI ($)'] = grouped_df.apply(
+                lambda r: round(r['Spend ($)'] / r['Installs'], 2) if r['Installs'] > 0 else 0.0, axis=1
+            )
+            
+            grouped_df['ROAS (%)'] = grouped_df.apply(
+                lambda r: round((r['Total Revenue ($)'] / r['Spend ($)']) * 100, 1) if r['Spend ($)'] > 0 else 0.0, axis=1
+            )
+
+            # --- 6. Форматирование вывода ---
+            display_df = grouped_df.copy()
+            
+            for col in ['Ad Revenue ($)', 'IAP Revenue ($)', 'Total Revenue ($)', 'Spend ($)']:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].round(2)
+
+            for col in ['RR D1 (%)', 'RR D3 (%)', 'RR D7 (%)', 'ROAS (%)']:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].round(1).astype(str) + " %"
+
+            if 'Avg Sessions' in display_df.columns:
+                display_df['Avg Sessions'] = display_df['Avg Sessions'].round(1)
+
+            if 'Installs' in display_df.columns:
+                display_df['Installs'] = display_df['Installs'].astype(int)
+
+            # Пересечение выбранных столбцов для отображения
+            final_cols = [c for c in selected_dimensions + selected_metrics if c in display_df.columns]
+            
+            st.subheader("Результаты анализа")
+            st.dataframe(display_df[final_cols], use_container_width=True)
+
     except Exception as e:
         st.error(f"Ошибка выполнения запроса: {e}")
-
-# Запрос расходов из таблицы ad_spend за период
-spend_res = supabase.table("ad_spend") \
-    .select("campaign_name, ad_network, spend") \
-    .gte("date", start_date) \
-    .lte("date", end_date) \
-    .execute()
-
-df_spend = pd.DataFrame(spend_res.data) if spend_res.data else pd.DataFrame()
-
-# При группировке объединяем установки и доходы с расходами:
-if not df_spend.empty:
-    spend_by_campaign = df_spend.groupby(['ad_network', 'campaign_name'])['spend'].sum().reset_index()
-    spend_by_campaign.rename(columns={'spend': 'Spend ($)'}, inplace=True)
-    
-    # Склеиваем с основной таблицей установок
-    grouped_df = grouped_df.merge(spend_by_campaign, on=['ad_network', 'campaign_name'], how='left')
-    grouped_df['Spend ($)'] = grouped_df['Spend ($)'].fillna(0.0)
 else:
-    grouped_df['Spend ($)'] = 0.0
-
-# --- Расчет CPI и ROAS ---
-grouped_df['CPI ($)'] = (grouped_df['Spend ($)'] / grouped_df['Installs']).round(2)
-
-# ROAS = (Total Revenue / Spend) * 100%
-grouped_df['ROAS (%)'] = grouped_df.apply(
-    lambda r: f"{(r['Total Revenue ($)'] / r['Spend ($)'] * 100):.1f} %" if r['Spend ($)'] > 0 else "0.0 %", 
-    axis=1
-)
+    st.info("Выберите диапазон дат в левой панели для загрузки отчета.")
