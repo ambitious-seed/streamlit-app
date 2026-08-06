@@ -52,17 +52,19 @@ selected_metrics = st.sidebar.multiselect(
 if len(date_range) == 2:
     start_date, end_date = date_range
     
-    # Форматируем в стандарт ISO 8601 с буквой T и таймзоной Z (UTC)
-    start_str = f"{start_date}T00:00:00Z"
-    end_str = f"{end_date}T23:59:59Z"
+    # Расширяем границу конца дня на +1 день для корректного перекрытия времени
+    next_day = end_date + pd.Timedelta(days=1)
+    
+    start_str = start_date.strftime("%Y-%m-%d")
+    end_str = next_day.strftime("%Y-%m-%d")
     
     try:
-        # Запрос установок из mmp
+        # Запрос установок из mmp с запасом по времени
         mmp_res = (
             supabase.table("mmp")
             .select("*")
             .gte("created_at", start_str)
-            .lte("created_at", end_str)
+            .lt("created_at", end_str)  # lt вместо lte исключает следующую полночь
             .execute()
         )
         
