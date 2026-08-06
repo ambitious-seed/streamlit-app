@@ -1,4 +1,7 @@
 import os
+import io
+import csv
+import requests
 from datetime import datetime, timedelta
 from google.ads.googleads.client import GoogleAdsClient
 from facebook_business.api import FacebookAdsApi
@@ -17,14 +20,14 @@ print("META_APP_ID:", "ЗАДАН" if os.getenv("META_APP_ID") else "ПУСТО 
 print("META_APP_SECRET:", "ЗАДАН" if os.getenv("META_APP_SECRET") else "ПУСТО / ОТСУТСТВУЕТ")
 print("META_ACCESS_TOKEN:", "ЗАДАН" if os.getenv("META_ACCESS_TOKEN") else "ПУСТО / ОТСУТСТВУЕТ")
 print("META_AD_ACCOUNT_ID:", "ЗАДАН" if os.getenv("META_AD_ACCOUNT_ID") else "ПУСТО / ОТСУТСТВУЕТ")
+print("UNITY_ORGANIZATION_ID:", "ЗАДАН" if os.getenv("UNITY_ORGANIZATION_ID") else "ПУСТО / ОТСУТСТВУЕТ")
+print("UNITY_API_KEY:", "ЗАДАН" if os.getenv("UNITY_API_KEY") else "ПУСТО / ОТСУТСТВУЕТ")
 print("---------------------------")
 
 # 1. Инициализация Supabase
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-yesterday_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
 # 2. Конфигурация Google Ads API из GitHub Secrets
 google_config = {
@@ -87,7 +90,6 @@ def fetch_facebook_ads_spend(date_str):
         FacebookAdsApi.init(app_id, app_secret, access_token)
         account = AdAccount(ad_account_id)
         
-        # Спускаемся на уровень Групп объявлений (adset)
         params = {
             'time_range': {'since': date_str, 'until': date_str},
             'level': 'adset',
@@ -105,7 +107,6 @@ def fetch_facebook_ads_spend(date_str):
                 records.append({
                     "date": date_str,
                     "ad_network": "facebook",
-                    # Теперь сохраняем название Группы объявлений (July_5k_USA...)
                     "campaign_name": item.get('adset_name', 'Unknown Adset'),
                     "spend": spend_val
                 })
@@ -117,8 +118,56 @@ def fetch_facebook_ads_spend(date_str):
         
     return records
 
+def fetch_unity_ads_spend(date_str):
+    records = []
+    org_id = os.getenv("UNITY_ORGANIZATION_ID")
+    api_key = os.getenv("UNITY_API_KEY")
+
+    if not all([org_id, api_key]):
+        print("⚠️ Пропущены секреты Unity Ads — сбор Unity отменен.")
+        return records
+
+    url = f"https://stats.unityads.unity3d.com/v2/stats/advertiser/organizations/{org_id}"
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}"
+    }
+    
+    params = {
+        "start": date_str,
+        "end": date_str,
+        "scale": "day",
+        "groupby": "campaign",
+        "fields": "spend,campaign_name"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        
+        # Stats API v2.0 возвращает ответ в CSV
+        csv_reader = csv.DictReader(io.StringIO(response.text))
+        
+        for row in csv_reader:
+            spend_val = float(row.get("spend", 0))
+            campaign_name = row.get("campaign_name", "Unknown Unity Campaign")
+            
+            if spend_val > 0:
+                records.append({
+                    "date": date_str,
+                    "ad_network": "unity",
+                    "campaign_name": campaign_name,
+                    "spend": spend_val
+                })
+                
+        print(f"✅ Unity Ads: Найдено {len(records)} кампаний с расходами.")
+        
+    except Exception as e:
+        print(f"⚠️ Ошибка при запросе к Unity Stats API v2.0: {e}")
+
+    return records
+
 def main():
-    # Собираем данные за последние 3 дня (вчера, позавчера и 3 дня назад)
     today = datetime.now()
     
     for i in range(1, 4):
@@ -127,8 +176,9 @@ def main():
         
         google_data = fetch_google_ads_spend(target_date)
         meta_data = fetch_facebook_ads_spend(target_date)
+        unity_data = fetch_unity_ads_spend(target_date)
         
-        all_spend_data = google_data + meta_data
+        all_spend_data = google_data + meta_data + unity_data
         
         if all_spend_data:
             supabase.table("ad_spend").upsert(
