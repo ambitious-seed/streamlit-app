@@ -63,8 +63,8 @@ if len(date_range) == 2:
         mmp_res = (
             supabase.table("mmp")
             .select("*")
-            .gte("created_at", start_str)
-            .lt("created_at", end_str)  # lt вместо lte исключает следующую полночь
+            .gte("first_session_date", start_str)
+            .lt("first_session_date", end_str)  # lt вместо lte исключает следующую полночь
             .execute()
         )
         
@@ -84,13 +84,13 @@ if len(date_range) == 2:
             df_spend = pd.DataFrame(spend_res.data) if spend_res.data else pd.DataFrame()
             
             # Подготовка полей
-            df_mmp['install_date'] = pd.to_datetime(df_mmp['created_at']).dt.date
+            df_mmp['install_date'] = pd.to_datetime(df_mmp['first_session_date']).dt.date
             df_mmp['ad_network'] = df_mmp['ad_network'].fillna('Organic')
             df_mmp['campaign_name'] = df_mmp['campaign_name'].fillna('Organic')
             df_mmp['creative_name'] = df_mmp['creative_name'].fillna('None') if 'creative_name' in df_mmp.columns else 'None'
             
             # Расчет Retention Rate
-            install_dt = pd.to_datetime(df_mmp['created_at'], errors='coerce')
+            install_dt = pd.to_datetime(df_mmp['first_session_date'], errors='coerce')
             last_sess_dt = pd.to_datetime(df_mmp['last_session_date'], errors='coerce').fillna(install_dt)
             
             days_diff = (last_sess_dt.dt.date - install_dt.dt.date).apply(lambda x: x.days if pd.notnull(x) else 0)
