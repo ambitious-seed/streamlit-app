@@ -84,11 +84,11 @@ if len(date_range) == 2:
         if df_mmp.empty and df_spend.empty:
             st.info("За выбранный период нет данных ни по установкам, ни по расходам.")
         else:
-            # --- 2. Обработка данных MMP (Установки и Доходы) ---
+            # --- 2. Обработка данных MMP ---
             if not df_mmp.empty:
                 df_mmp['install_date'] = pd.to_datetime(df_mmp['created_at']).dt.date
                 df_mmp['ad_network'] = df_mmp['ad_network'].fillna('Organic')
-                df_mmp['campaign_name'] = df_mmp['campaign_name'].fillna('None')
+                df_mmp['campaign_name'] = df_mmp['campaign_name'].fillna('Organic')
                 
                 if 'creative_name' in df_mmp.columns:
                     df_mmp['creative_name'] = df_mmp['creative_name'].fillna('None')
@@ -104,7 +104,7 @@ if len(date_range) == 2:
                 df_mmp['RR D3 (%)'] = (days_diff >= 3).astype(int) * 100
                 df_mmp['RR D7 (%)'] = (days_diff >= 7).astype(int) * 100
                 
-                # Ad Revenue из событий
+                # Ad Revenue
                 if not df_ad.empty:
                     ad_by_iid = df_ad.groupby('iid')['revenue'].sum().reset_index().rename(columns={'revenue': 'Ad Revenue ($)'})
                     df_mmp = df_mmp.merge(ad_by_iid, on='iid', how='left')
@@ -127,7 +127,7 @@ if len(date_range) == 2:
                 df_mmp['Installs'] = 1
                 df_mmp['Avg Sessions'] = df_mmp['session_count']
 
-                # Группировка MMP
+                # Полная агрегация MMP ВСЕГДА всех полей
                 agg_rules = {
                     'Installs': 'sum',
                     'RR D1 (%)': 'mean',
@@ -150,7 +150,7 @@ if len(date_range) == 2:
             else:
                 spend_grouped = pd.DataFrame(columns=spend_dims + ['Spend ($)'])
 
-            # --- 4. Объединение MMP и Расходов ---
+            # --- 4. Объединение MMP и Расходов через outer join ---
             if spend_grouped.empty or not spend_dims:
                 grouped_df = grouped_mmp
                 grouped_df['Spend ($)'] = 0.0
@@ -162,17 +162,17 @@ if len(date_range) == 2:
                 grouped_df = pd.merge(grouped_mmp, spend_grouped, on=spend_dims, how='outer')
                 grouped_df['Spend ($)'] = grouped_df['Spend ($)'].fillna(0.0)
 
-            # Заполнение NaN для столбцов категорий и метрик
+            # Восстановление пропущенных значении
             for dim in selected_dimensions:
                 if dim in grouped_df.columns:
-                    grouped_df[dim] = grouped_df[dim].fillna('None')
+                    grouped_df[dim] = grouped_df[dim].fillna('Organic')
 
             numeric_cols = ['Installs', 'Ad Revenue ($)', 'IAP Revenue ($)', 'Total Revenue ($)', 'RR D1 (%)', 'RR D3 (%)', 'RR D7 (%)', 'Avg Sessions']
             for col in numeric_cols:
                 if col in grouped_df.columns:
                     grouped_df[col] = grouped_df[col].fillna(0.0)
 
-            # --- 5. Вычисление CPI и ROAS (до форматирования в строки) ---
+            # --- 5. Вычисление CPI и ROAS ---
             grouped_df['CPI ($)'] = grouped_df.apply(
                 lambda r: round(r['Spend ($)'] / r['Installs'], 2) if r['Installs'] > 0 else 0.0, axis=1
             )
