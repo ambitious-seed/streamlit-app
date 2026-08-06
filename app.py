@@ -55,8 +55,8 @@ if len(date_range) == 2:
     # Расширяем границу конца дня на +1 день для корректного перекрытия времени
     next_day = end_date + pd.Timedelta(days=1)
     
-    start_str = start_date.strftime("%Y-%m-%d")
-    end_str = next_day.strftime("%Y-%m-%d")
+    start_str = start_date.strftime("%Y-%m-%dT00:00:00Z")
+    end_str = next_day.strftime("%Y-%m-%dT00:00:00Z")
     
     try:
         # Запрос установок из mmp с запасом по времени
