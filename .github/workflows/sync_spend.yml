@@ -1,11 +1,9 @@
 name: Sync Ad Spend Daily
 
-# Настройка расписания
 on:
   schedule:
-    # В 00:00 и 12:00 UTC: (+2 по Сербии)
+    # В 00:00 и 12:00 UTC (+2 по Сербии)
     - cron: '0 0,12 * * *'
-  # Кнопка для ручного запуска из интерфейса GitHub
   workflow_dispatch: 
 
 jobs:
