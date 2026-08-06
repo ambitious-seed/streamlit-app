@@ -118,7 +118,10 @@ if len(date_range) == 2:
                 except:
                     return 0.0
 
-            df_mmp['IAP Revenue ($)'] = df_mmp['iap_revenue_by_currency'].apply(parse_iap)
+            if 'iap_revenue_usd' in df_mmp.columns:
+                df_mmp['IAP Revenue ($)'] = pd.to_numeric(df_mmp['iap_revenue_usd'], errors='coerce').fillna(0.0)
+            else:
+                df_mmp['IAP Revenue ($)'] = df_mmp['iap_revenue_by_currency'].apply(parse_iap)
             df_mmp['Total Revenue ($)'] = df_mmp['Ad Revenue ($)'] + df_mmp['IAP Revenue ($)']
             df_mmp['Installs'] = 1
             df_mmp['Avg Sessions'] = df_mmp['session_count']
