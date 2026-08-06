@@ -51,16 +51,20 @@ selected_metrics = st.sidebar.multiselect(
 
 if len(date_range) == 2:
     start_date, end_date = date_range
-    start_str = f"{start_date} 00:00:00"
-    end_str = f"{end_date} 23:59:59"
+    
+    # Форматируем в стандарт ISO 8601 с буквой T и таймзоной Z (UTC)
+    start_str = f"{start_date}T00:00:00Z"
+    end_str = f"{end_date}T23:59:59Z"
     
     try:
-        # 1. Запрос установок из mmp
-        mmp_res = supabase.table("mmp") \
-            .select("*") \
-            .gte("created_at", start_str) \
-            .lte("created_at", end_str) \
+        # Запрос установок из mmp
+        mmp_res = (
+            supabase.table("mmp")
+            .select("*")
+            .gte("created_at", start_str)
+            .lte("created_at", end_str)
             .execute()
+        )
         
         # 2. Запрос ad revenue
         ad_res = supabase.table("mmp_ad_revenue_events").select("*").execute()
