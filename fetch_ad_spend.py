@@ -2,6 +2,7 @@ import os
 import io
 import csv
 import requests
+from requests.auth import HTTPBasicAuth
 from datetime import datetime, timedelta
 from google.ads.googleads.client import GoogleAdsClient
 from facebook_business.api import FacebookAdsApi
@@ -132,22 +133,29 @@ def fetch_unity_ads_spend(date_str):
         print("⚠️ Пропущены секреты Unity Ads — сбор Unity отменен.")
         return records
 
-    url = f"https://stats.unityads.unity3d.com/v2/stats/advertiser/organizations/{org_id}"
+    url = f"https://services.api.unity.com/advertise/stats/v2/organizations/{org_id}/reports/acquisitions"
     
-    headers = {
-        "Authorization": f"Bearer {api_key}"
-    }
+    headers = {}
+    auth = None
+    if ":" in api_key:
+        key_id, secret_key = api_key.split(":", 1)
+        auth = HTTPBasicAuth(key_id, secret_key)
+    else:
+        headers["Authorization"] = f"Bearer {api_key}"
     
     params = {
         "start": date_str,
         "end": date_str,
         "scale": "day",
-        "groupby": "campaign",
-        "fields": "spend,campaign_name"
+        "breakdowns": "campaign",
+        "metrics": "spend"
     }
 
     try:
-        response = requests.get(url, headers=headers, params=params)
+        response = requests.get(url, headers=headers, auth=auth, params=params, timeout=60)
+        if response.status_code == 204:
+            print("Unity Ads: РґР°РЅРЅС‹С… Р·Р° РґР°С‚Сѓ РЅРµС‚.")
+            return records
         response.raise_for_status()
         
         # Stats API v2.0 возвращает ответ в CSV
@@ -155,7 +163,7 @@ def fetch_unity_ads_spend(date_str):
         
         for row in csv_reader:
             spend_val = float(row.get("spend", 0))
-            campaign_name = row.get("campaign_name", "Unknown Unity Campaign")
+            campaign_name = row.get("campaign name") or row.get("campaign_name") or "Unknown Unity Campaign"
             
             if spend_val > 0:
                 records.append({
