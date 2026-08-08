@@ -86,7 +86,11 @@ if len(date_range) == 2:
             # Подготовка полей
             install_dt = pd.to_datetime(df_mmp['first_session_date'], errors='coerce', utc=True)
             df_mmp['install_date'] = install_dt.dt.date
-            df_mmp['ad_network'] = df_mmp['ad_network'].replace('', pd.NA).fillna('Неопознанная сеть')
+            df_mmp['ad_network'] = df_mmp['ad_network'].replace({
+                'appliflier': 'Unity Ads',
+                'appliflier_int': 'Unity Ads',
+                '': pd.NA
+            }).fillna('Неопознанная сеть')
             df_mmp['campaign_name'] = df_mmp['campaign_name'].replace('', pd.NA).fillna('Неизвестная кампания')
             df_mmp['creative_name'] = df_mmp['creative_name'].replace('', pd.NA).fillna('Неизвестный креатив') if 'creative_name' in df_mmp.columns else 'Неизвестный креатив'
             
