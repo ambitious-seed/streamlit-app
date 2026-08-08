@@ -89,6 +89,8 @@ if len(date_range) == 2:
             df_mmp['ad_network'] = df_mmp['ad_network'].replace({
                 'appliflier': 'Unity Ads',
                 'appliflier_int': 'Unity Ads',
+                'applifier': 'Unity Ads',
+                'applifier_int': 'Unity Ads',
                 '': pd.NA
             }).fillna('Неопознанная сеть')
             df_mmp['campaign_name'] = df_mmp['campaign_name'].replace('', pd.NA).fillna('Неизвестная кампания')
