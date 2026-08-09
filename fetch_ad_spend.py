@@ -137,9 +137,11 @@ def fetch_unity_ads_spend(date_str):
     
     headers = {}
     auth = None
+    auth_mode = "Bearer"
     if ":" in api_key:
         key_id, secret_key = api_key.split(":", 1)
         auth = HTTPBasicAuth(key_id, secret_key)
+        auth_mode = "Basic"
     else:
         headers["Authorization"] = f"Bearer {api_key}"
     
@@ -152,6 +154,7 @@ def fetch_unity_ads_spend(date_str):
     }
 
     try:
+        print(f"Unity Ads: запрос Statistics API v2, auth={auth_mode}, org_id_length={len(org_id)}")
         response = requests.get(url, headers=headers, auth=auth, params=params, timeout=60)
         if response.status_code == 204:
             print("Unity Ads: РґР°РЅРЅС‹С… Р·Р° РґР°С‚Сѓ РЅРµС‚.")
