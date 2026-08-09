@@ -80,13 +80,18 @@ if len(date_range) == 2:
             df_spend = pd.DataFrame(spend_res.data) if spend_res.data else pd.DataFrame()
 
             install_iids = df_mmp['iid'].dropna().astype(str).unique().tolist()
-            ad_res = (
-                supabase.table("mmp_ad_revenue_events")
-                .select("iid, revenue")
-                .in_("iid", install_iids)
-                .execute()
-            ) if install_iids else None
-            df_ad = pd.DataFrame(ad_res.data) if ad_res and ad_res.data else pd.DataFrame()
+            ad_rows = []
+            for i in range(0, len(install_iids), 100):
+                iid_chunk = install_iids[i:i + 100]
+                ad_res = (
+                    supabase.table("mmp_ad_revenue_events")
+                    .select("iid, revenue")
+                    .in_("iid", iid_chunk)
+                    .execute()
+                )
+                if ad_res.data:
+                    ad_rows.extend(ad_res.data)
+            df_ad = pd.DataFrame(ad_rows) if ad_rows else pd.DataFrame()
             
             # Подготовка полей
             def normalize_ad_network(series):
