@@ -68,10 +68,7 @@ if len(date_range) == 2:
             .execute()
         )
         
-        # 2. Запрос ad revenue
-        ad_res = supabase.table("mmp_ad_revenue_events").select("*").execute()
-        
-        # 3. Запрос расходов из ad_spend (перенесено внутрь условия проверки дат!)
+        # 2. Запрос расходов из ad_spend (перенесено внутрь условия проверки дат!)
         spend_res = supabase.table("ad_spend") \
             .select("date, campaign_name, ad_network, spend") \
             .gte("date", str(start_date)) \
@@ -80,8 +77,16 @@ if len(date_range) == 2:
 
         if mmp_res.data:
             df_mmp = pd.DataFrame(mmp_res.data)
-            df_ad = pd.DataFrame(ad_res.data) if ad_res.data else pd.DataFrame()
             df_spend = pd.DataFrame(spend_res.data) if spend_res.data else pd.DataFrame()
+
+            install_iids = df_mmp['iid'].dropna().astype(str).unique().tolist()
+            ad_res = (
+                supabase.table("mmp_ad_revenue_events")
+                .select("iid, revenue")
+                .in_("iid", install_iids)
+                .execute()
+            ) if install_iids else None
+            df_ad = pd.DataFrame(ad_res.data) if ad_res and ad_res.data else pd.DataFrame()
             
             # Подготовка полей
             def normalize_ad_network(series):
@@ -128,6 +133,7 @@ if len(date_range) == 2:
             
             # Привязка Ad Revenue
             if not df_ad.empty and 'iid' in df_ad.columns:
+                df_ad['revenue'] = pd.to_numeric(df_ad['revenue'], errors='coerce').fillna(0.0)
                 ad_by_iid = df_ad.groupby('iid')['revenue'].sum().reset_index()
                 ad_by_iid.rename(columns={'revenue': 'Ad Revenue ($)'}, inplace=True)
                 df_mmp = df_mmp.merge(ad_by_iid, on='iid', how='left')
