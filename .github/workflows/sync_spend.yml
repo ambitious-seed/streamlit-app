@@ -46,4 +46,6 @@ jobs:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
         run: |
+          git rev-parse HEAD
+          grep -n "start_dt\|reports/acquisitions\|%Y-%m-%dT00:00:00Z" fetch_ad_spend.py
           python fetch_ad_spend.py
