@@ -73,7 +73,7 @@ if len(date_range) == 2:
         
         # 3. Запрос расходов из ad_spend (перенесено внутрь условия проверки дат!)
         spend_res = supabase.table("ad_spend") \
-            .select("campaign_name, ad_network, spend") \
+            .select("date, campaign_name, ad_network, spend") \
             .gte("date", str(start_date)) \
             .lte("date", str(end_date)) \
             .execute()
@@ -84,17 +84,38 @@ if len(date_range) == 2:
             df_spend = pd.DataFrame(spend_res.data) if spend_res.data else pd.DataFrame()
             
             # Подготовка полей
+            def normalize_ad_network(series):
+                aliases = {
+                    'appliflier': 'Unity Ads',
+                    'appliflier_int': 'Unity Ads',
+                    'applifier': 'Unity Ads',
+                    'applifier_int': 'Unity Ads',
+                    'unity': 'Unity Ads',
+                    'unity ads': 'Unity Ads',
+                }
+                clean = series.astype('string').str.strip()
+                mapped = clean.str.lower().map(aliases)
+                return mapped.fillna(clean).replace('', pd.NA).fillna('Неопознанная сеть')
+
+            def normalize_name(series, unknown):
+                return (
+                    series.astype('string')
+                    .str.replace(r'\s+', ' ', regex=True)
+                    .str.strip()
+                    .replace('', pd.NA)
+                    .fillna(unknown)
+                )
+
             install_dt = pd.to_datetime(df_mmp['first_session_date'], errors='coerce', utc=True)
             df_mmp['install_date'] = install_dt.dt.date
-            df_mmp['ad_network'] = df_mmp['ad_network'].replace({
-                'appliflier': 'Unity Ads',
-                'appliflier_int': 'Unity Ads',
-                'applifier': 'Unity Ads',
-                'applifier_int': 'Unity Ads',
-                '': pd.NA
-            }).fillna('Неопознанная сеть')
-            df_mmp['campaign_name'] = df_mmp['campaign_name'].replace('', pd.NA).fillna('Неизвестная кампания')
-            df_mmp['creative_name'] = df_mmp['creative_name'].replace('', pd.NA).fillna('Неизвестный креатив') if 'creative_name' in df_mmp.columns else 'Неизвестный креатив'
+            df_mmp['ad_network'] = normalize_ad_network(df_mmp['ad_network'])
+            df_mmp['campaign_name'] = normalize_name(df_mmp['campaign_name'], 'Неизвестная кампания')
+            df_mmp['creative_name'] = normalize_name(df_mmp['creative_name'], 'Неизвестный креатив') if 'creative_name' in df_mmp.columns else 'Неизвестный креатив'
+            if not df_spend.empty:
+                df_spend['ad_network'] = normalize_ad_network(df_spend['ad_network'])
+                df_spend['campaign_name'] = normalize_name(df_spend['campaign_name'], 'Неизвестная кампания')
+                df_spend['spend'] = pd.to_numeric(df_spend['spend'], errors='coerce').fillna(0.0)
+                df_spend['install_date'] = pd.to_datetime(df_spend['date'], errors='coerce').dt.date
             
             # Расчет Retention Rate
             last_sess_dt = pd.to_datetime(df_mmp['last_session_date'], errors='coerce', utc=True).fillna(install_dt)
@@ -150,7 +171,7 @@ if len(date_range) == 2:
                 
                 # Привязка расходов из ad_spend
                 if not df_spend.empty:
-                    spend_dims = [d for d in selected_dimensions if d in ['ad_network', 'campaign_name']]
+                    spend_dims = [d for d in selected_dimensions if d in ['ad_network', 'campaign_name', 'install_date']]
                     if spend_dims:
                         spend_grouped = df_spend.groupby(spend_dims)['spend'].sum().reset_index()
                         spend_grouped.rename(columns={'spend': 'Spend ($)'}, inplace=True)

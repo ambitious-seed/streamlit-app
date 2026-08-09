@@ -160,11 +160,11 @@ def fetch_unity_ads_spend(date_str):
         print(f"Unity Ads: запрос Statistics API v2, auth={auth_mode}, org_id_length={len(org_id)}")
         response = requests.get(url, headers=headers, auth=auth, params=params, timeout=60)
         if response.status_code == 204:
-            print("Unity Ads: РґР°РЅРЅС‹С… Р·Р° РґР°С‚Сѓ РЅРµС‚.")
+            print("Unity Ads: no data for this date.")
             return records
         response.raise_for_status()
         
-        # Stats API v2.0 возвращает ответ в CSV
+        # Stats API v2.0 returns CSV.
         csv_reader = csv.DictReader(io.StringIO(response.text))
         
         for row in csv_reader:
