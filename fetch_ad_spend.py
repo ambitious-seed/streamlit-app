@@ -145,9 +145,12 @@ def fetch_unity_ads_spend(date_str):
     else:
         headers["Authorization"] = f"Bearer {api_key}"
     
+    start_dt = datetime.strptime(date_str, "%Y-%m-%d")
+    end_dt = start_dt + timedelta(days=1)
+
     params = {
-        "start": date_str,
-        "end": date_str,
+        "start": start_dt.strftime("%Y-%m-%dT00:00:00Z"),
+        "end": end_dt.strftime("%Y-%m-%dT00:00:00Z"),
         "scale": "day",
         "breakdowns": "campaign",
         "metrics": "spend"
