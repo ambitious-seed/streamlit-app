@@ -59,38 +59,47 @@ if len(date_range) == 2:
     end_str = next_day.strftime("%Y-%m-%dT00:00:00Z")
     
     try:
+        def fetch_page(query_factory, page_size=1000):
+            rows = []
+            offset = 0
+            while True:
+                res = query_factory().range(offset, offset + page_size - 1).execute()
+                batch = res.data or []
+                rows.extend(batch)
+                if len(batch) < page_size:
+                    break
+                offset += page_size
+            return rows
+
         # Запрос установок из mmp с запасом по времени
-        mmp_res = (
-            supabase.table("mmp")
+        mmp_rows = fetch_page(
+            lambda: supabase.table("mmp")
             .select("*")
             .gte("first_session_date", start_str)
-            .lt("first_session_date", end_str)  # lt вместо lte исключает следующую полночь
-            .execute()
+            .lt("first_session_date", end_str)
         )
         
         # 2. Запрос расходов из ad_spend (перенесено внутрь условия проверки дат!)
-        spend_res = supabase.table("ad_spend") \
-            .select("date, campaign_name, ad_network, spend") \
-            .gte("date", str(start_date)) \
-            .lte("date", str(end_date)) \
-            .execute()
+        spend_rows = fetch_page(
+            lambda: supabase.table("ad_spend")
+            .select("date, campaign_name, ad_network, spend")
+            .gte("date", str(start_date))
+            .lte("date", str(end_date))
+        )
 
-        if mmp_res.data:
-            df_mmp = pd.DataFrame(mmp_res.data)
-            df_spend = pd.DataFrame(spend_res.data) if spend_res.data else pd.DataFrame()
+        if mmp_rows:
+            df_mmp = pd.DataFrame(mmp_rows)
+            df_spend = pd.DataFrame(spend_rows) if spend_rows else pd.DataFrame()
 
             install_iids = df_mmp['iid'].dropna().astype(str).unique().tolist()
             ad_rows = []
             for i in range(0, len(install_iids), 100):
                 iid_chunk = install_iids[i:i + 100]
-                ad_res = (
-                    supabase.table("mmp_ad_revenue_events")
+                ad_rows.extend(fetch_page(
+                    lambda iid_chunk=iid_chunk: supabase.table("mmp_ad_revenue_events")
                     .select("iid, revenue")
                     .in_("iid", iid_chunk)
-                    .execute()
-                )
-                if ad_res.data:
-                    ad_rows.extend(ad_res.data)
+                ))
             df_ad = pd.DataFrame(ad_rows) if ad_rows else pd.DataFrame()
             
             # Подготовка полей
