@@ -46,7 +46,7 @@ AVAILABLE_METRICS = [
 selected_metrics = st.sidebar.multiselect(
     "Метрики (Metrics)",
     options=AVAILABLE_METRICS,
-    default=["Installs", "Spend ($)", "CPI ($)", "ROAS (%)", "RR D1 (%)", "Ad Revenue ($)", "Total Revenue ($)"]
+    default=["Installs", "Spend ($)", "CPI ($)", "Ad Revenue ($)", "IAP Revenue ($)", "Total Revenue ($)", "ROAS (%)"]
 )
 
 if len(date_range) == 2:
