@@ -111,6 +111,10 @@ if len(date_range) == 2:
                     'applifier_int': 'Unity Ads',
                     'unity': 'Unity Ads',
                     'unity ads': 'Unity Ads',
+                    'google': 'google',
+                    'googleadwords_int': 'google',
+                    'googleads': 'google',
+                    'google ads': 'google',
                 }
                 clean = series.astype('string').str.strip()
                 mapped = clean.str.lower().map(aliases)
