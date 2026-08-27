@@ -200,6 +200,21 @@ if len(date_range) == 2:
                         spend_grouped = df_spend.groupby(spend_dims)['spend'].sum().reset_index()
                         spend_grouped.rename(columns={'spend': 'Spend ($)'}, inplace=True)
                         grouped_df = grouped_df.merge(spend_grouped, on=spend_dims, how='left')
+
+                        if 'campaign_name' in selected_dimensions:
+                            fallback_dims = [d for d in selected_dimensions if d in ['ad_network', 'install_date']]
+                            if fallback_dims:
+                                spend_by_network = df_spend.groupby(fallback_dims)['spend'].sum().reset_index()
+                                spend_by_network.rename(columns={'spend': 'Spend by Network ($)'}, inplace=True)
+                                grouped_df = grouped_df.merge(spend_by_network, on=fallback_dims, how='left')
+
+                                unknown_campaign = grouped_df['campaign_name'].eq('Неизвестная кампания')
+                                missing_spend = grouped_df['Spend ($)'].isna() | grouped_df['Spend ($)'].eq(0)
+                                grouped_df.loc[unknown_campaign & missing_spend, 'Spend ($)'] = grouped_df.loc[
+                                    unknown_campaign & missing_spend,
+                                    'Spend by Network ($)'
+                                ]
+                                grouped_df.drop(columns=['Spend by Network ($)'], inplace=True)
                     else:
                         grouped_df['Spend ($)'] = 0.0
                 else:
